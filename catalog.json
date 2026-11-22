@@ -1,0 +1,7 @@
+{
+  "test_skin": {
+    "name": "Test Skin Script",
+    "price_usd": 1.0,
+    "file_path": "scripts/test_skin.lua"
+  }
+}
