@@ -1,7 +1,13 @@
 import json
 import os
 import uuid
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+    Update,
+)
 from telegram.ext import (
     ApplicationBuilder,
     CallbackQueryHandler,
@@ -25,7 +31,21 @@ ORDERS = {}
 PENDING_RECEIPT_USER = {}
 
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def get_main_reply_keyboard():
+  return ReplyKeyboardMarkup(
+      [
+          [KeyboardButton("🛒 ទិញ Skin ($1)"), KeyboardButton("📜 បញ្ជី Skin")],
+          [KeyboardButton("ℹ️ របៀបទិញ")],
+          [
+              KeyboardButton("📩 ទាក់ទង Admin"),
+              KeyboardButton("📦 Order របស់ខ្ញុំ"),
+          ],
+      ],
+      resize_keyboard=True,
+  )
+
+
+async def send_skin_catalog(message_target):
   keyboard = [
       [
           InlineKeyboardButton(
@@ -36,16 +56,50 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
       for skin_id, item in CATALOG.items()
   ]
 
-  # Keyboard Line ថ្មី ១ ជួរនៅខាងក្រោម
   keyboard.append([
       InlineKeyboardButton("ℹ️ របៀបទិញ", callback_data="how_to_buy"),
       InlineKeyboardButton("📩 Admin", url=f"tg://user?id={ADMIN_ID}"),
   ])
 
-  await update.message.reply_text(
+  await message_target.reply_text(
       "សូមជ្រើសរើស Skin Script ($1 / skin):",
       reply_markup=InlineKeyboardMarkup(keyboard),
   )
+
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  await update.message.reply_text(
+      "សូមស្វាគមន៍មកកាន់ហាងលក់ Skin Script ($1 / skin)!",
+      reply_markup=get_main_reply_keyboard(),
+  )
+  await send_skin_catalog(update.message)
+
+
+async def on_reply_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  text = (update.message.text or "").strip()
+
+  if text in ("🛒 ទិញ Skin ($1)", "📜 បញ្ជី Skin"):
+    await send_skin_catalog(update.message)
+  elif text == "ℹ️ របៀបទិញ":
+    await update.message.reply_text(
+        "1. ជ្រើសរើស Skin Script ($1)\n"
+        "2. ស្កេន KHQR រួចផ្ញើរូបភាព Receipt ចូល Bot\n"
+        "3. រង់ចាំ Admin Approve ដើម្បីទទួលបាន File Script"
+    )
+  elif text == "📩 ទាក់ទង Admin":
+    await update.message.reply_text(
+        f"សូមទាក់ទង Admin តាមរយៈ៖ tg://user?id={ADMIN_ID}"
+    )
+  elif text == "📦 Order របស់ខ្ញុំ":
+    user_id = update.effective_user.id
+    user_orders = [o for o in ORDERS.values() if o["user_id"] == user_id]
+    if not user_orders:
+      await update.message.reply_text("អ្នកមិនទាន់មាន Order ណាមួយនៅឡើយទេ។")
+      return
+    lines = ["📦 **Order របស់អ្នក：**"]
+    for o in user_orders[-5:]:
+      lines.append(f"• `{o['order_id']}` — {o['skin_name']} ({o['status']})")
+    await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
 
 
 async def on_how_to_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -72,7 +126,7 @@ async def add_skin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "ទម្រង់ប្រើប្រាស់៖\n"
         "`/addskin | skin_id | ឈ្មោះ Skin | scripts/file.lua`\n\n"
         "ឧទាហរណ៍：\n"
-        "`/addskin | chou_stun | Chou STUN Skin | scripts/chou_stun.lua`",
+        "`/addskin | nolan_skin | Nolan Skin Script | scripts/nolan_skin.lua`",
         parse_mode="Markdown",
     )
     return
@@ -99,6 +153,67 @@ async def add_skin(update: Update, context: ContextTypes.DEFAULT_TYPE):
       f"• ឈ្មោះ: *{skin_name}*\n"
       f"• តម្លៃ: *$1*\n"
       f"• File Path: `{file_path}`\n\n"
+      "វាយ `/start` ដើម្បីមើលប៊ូតុង Skin ថ្មីក្នុង Menu។",
+      parse_mode="Markdown",
+  )
+
+
+async def upload_skin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  user = update.effective_user
+  if not user or user.id != ADMIN_ID:
+    await update.message.reply_text("ពាក្យបញ្ជានេះសម្រាប់តែ Admin ប៉ុណ្ណោះ។")
+    return
+
+  doc = update.message.document
+  if not doc:
+    await update.message.reply_text(
+        "សូមផ្ញើ **File Script** (Document) ដោយដាក់ Caption តាមទម្រង់៖\n"
+        "`/uploadskin | skin_id | ឈ្មោះ Skin`\n\n"
+        "ឧទាហរណ៍：\n"
+        "`/uploadskin | nolan_skin | Nolan Skin Script`",
+        parse_mode="Markdown",
+    )
+    return
+
+  caption = (update.message.caption or "").replace("/uploadskin", "", 1).strip()
+  parts = [p.strip() for p in caption.split("|") if p.strip()]
+
+  if len(parts) < 2:
+    await update.message.reply_text(
+        "ខ្វះព័ត៌មានក្នុង Caption! សូមដាក់តាមទម្រង់：\n"
+        "`/uploadskin | nolan_skin | Nolan Skin Script`",
+        parse_mode="Markdown",
+    )
+    return
+
+  skin_id = parts[0].lower().replace(" ", "_")
+  skin_name = parts[1]
+
+  os.makedirs("scripts", exist_ok=True)
+  safe_filename = os.path.basename(doc.file_name or f"{skin_id}.lua")
+  file_path = os.path.join("scripts", safe_filename)
+
+  tg_file = await context.bot.get_file(doc.file_id)
+  await tg_file.download_to_drive(custom_path=file_path)
+
+  CATALOG[skin_id] = {
+      "name": skin_name,
+      "price_usd": 1,
+      "file_path": file_path,
+  }
+
+  try:
+    with open("catalog.json", "w", encoding="utf-8") as f:
+      json.dump(CATALOG, f, ensure_ascii=False, indent=2)
+  except Exception:
+    pass
+
+  await update.message.reply_text(
+      f"✅ បាន Upload File និង Add Skin ថ្មីរួចរាល់!\n"
+      f"• ID: `{skin_id}`\n"
+      f"• ឈ្មោះ: *{skin_name}*\n"
+      f"• តម្លៃ: *$1*\n"
+      f"• File: `{file_path}`\n\n"
       "វាយ `/start` ដើម្បីមើលប៊ូតុង Skin ថ្មីក្នុង Menu។",
       parse_mode="Markdown",
   )
@@ -279,9 +394,16 @@ def main():
   app.add_handler(CommandHandler("addskin", add_skin))
   app.add_handler(CallbackQueryHandler(on_how_to_buy, pattern=r"^how_to_buy$"))
   app.add_handler(CallbackQueryHandler(on_buy, pattern=r"^buy:"))
+  app.add_handler(MessageHandler(filters.Document.ALL, upload_skin))
   app.add_handler(MessageHandler(filters.PHOTO, on_photo))
   app.add_handler(
       CallbackQueryHandler(on_admin_decision, pattern=r"^(approve|reject):")
+  )
+  app.add_handler(
+      MessageHandler(
+          filters.TEXT & ~filters.COMMAND,
+          on_reply_menu,
+      )
   )
 
   app.run_polling(drop_pending_updates=True)
