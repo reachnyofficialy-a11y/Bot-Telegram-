@@ -13,7 +13,7 @@ from keep_alive import keep_alive
 
 TOKEN = os.environ.get("9145599477:AAHw0tySw95Tx0XD9klPKqN4wIkLOTEFQio")
 ADMIN_ID = int(os.environ.get("ADMIN_ID", "8413684077"))
-KHQR_PATH = os.environ.get("KHQR_PATH", "khqr.png")
+KHQR_PATH = os.environ.get("KHQR_PATH", "IMG_1813.jpeg")
 
 with open("catalog.json", "r", encoding="utf-8") as f:
   CATALOG = json.load(f)
