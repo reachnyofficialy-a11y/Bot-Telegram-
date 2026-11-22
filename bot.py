@@ -35,7 +35,7 @@ def get_main_reply_keyboard():
   return ReplyKeyboardMarkup(
       [
           [KeyboardButton("🛒 ទិញ Skin ($1)"), KeyboardButton("📜 បញ្ជី Skin")],
-          [KeyboardButton("ℹ️ របៀបទិញ")],
+          [KeyboardButton("➕ Add Product"), KeyboardButton("ℹ️ របៀបទិញ")],
           [
               KeyboardButton("📩 ទាក់ទង Admin"),
               KeyboardButton("📦 Order របស់ខ្ញុំ"),
@@ -80,6 +80,18 @@ async def on_reply_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   if text in ("🛒 ទិញ Skin ($1)", "📜 បញ្ជី Skin"):
     await send_skin_catalog(update.message)
+  elif text == "➕ Add Product":
+    if update.effective_user.id != ADMIN_ID:
+      await update.message.reply_text("មុខងារនេះសម្រាប់តែ Admin ប៉ុណ្ណោះ។")
+      return
+    await update.message.reply_text(
+        "➕ **របៀបបន្ថែម Product (Skin $1) លើ Telegram：**\n\n"
+        "1️⃣ **បន្ថែមឈ្មោះ Skin:**\n"
+        "`/addskin | nolan_skin | Nolan Skin Script | scripts/nolan_skin.lua`\n\n"
+        "2️⃣ **Upload File Script ផ្ទាល់ (Attach File + Caption):**\n"
+        "`/uploadskin | nolan_skin | Nolan Skin Script`",
+        parse_mode="Markdown",
+    )
   elif text == "ℹ️ របៀបទិញ":
     await update.message.reply_text(
         "1. ជ្រើសរើស Skin Script ($1)\n"
