@@ -58,6 +58,52 @@ async def on_how_to_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
   )
 
 
+async def add_skin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+  user = update.effective_user
+  if not user or user.id != ADMIN_ID:
+    await update.message.reply_text("ពាក្យបញ្ជានេះសម្រាប់តែ Admin ប៉ុណ្ណោះ។")
+    return
+
+  raw_text = update.message.text.replace("/addskin", "", 1).strip()
+  parts = [p.strip() for p in raw_text.split("|") if p.strip()]
+
+  if len(parts) < 2:
+    await update.message.reply_text(
+        "ទម្រង់ប្រើប្រាស់៖\n"
+        "`/addskin | skin_id | ឈ្មោះ Skin | scripts/file.lua`\n\n"
+        "ឧទាហរណ៍：\n"
+        "`/addskin | chou_stun | Chou STUN Skin | scripts/chou_stun.lua`",
+        parse_mode="Markdown",
+    )
+    return
+
+  skin_id = parts[0].lower().replace(" ", "_")
+  skin_name = parts[1]
+  file_path = parts[2] if len(parts) >= 3 else f"scripts/{skin_id}.lua"
+
+  CATALOG[skin_id] = {
+      "name": skin_name,
+      "price_usd": 1,
+      "file_path": file_path,
+  }
+
+  try:
+    with open("catalog.json", "w", encoding="utf-8") as f:
+      json.dump(CATALOG, f, ensure_ascii=False, indent=2)
+  except Exception:
+    pass
+
+  await update.message.reply_text(
+      f"✅ បាន Add Skin ថ្មីរួចរាល់!\n"
+      f"• ID: `{skin_id}`\n"
+      f"• ឈ្មោះ: *{skin_name}*\n"
+      f"• តម្លៃ: *$1*\n"
+      f"• File Path: `{file_path}`\n\n"
+      "វាយ `/start` ដើម្បីមើលប៊ូតុង Skin ថ្មីក្នុង Menu។",
+      parse_mode="Markdown",
+  )
+
+
 async def on_buy(update: Update, context: ContextTypes.DEFAULT_TYPE):
   query = update.callback_query
   await query.answer()
@@ -120,11 +166,6 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
       InlineKeyboardButton("❌ Reject", callback_data=f"reject:{order_id}"),
   ]])
 
-  admin_caption = (
-      f"📥 Receipt ថ្មីសម្រាប់ពិនិត្យ\n"
-      f"• Order ID: `{order_id}`\n"
-      f"• អ្នកទិញ: @{user.username} ({user.id})\n" if user.username else ""
-  )
   if not user.username:
     admin_caption = (
         f"📥 Receipt ថ្មីសម្រាប់ពិនិត្យ\n"
@@ -183,26 +224,33 @@ async def on_admin_decision(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   if action == "approve":
     file_path = order["file_path"]
-    if not os.path.exists(file_path):
-      await query.message.reply_text(f"❌ រកមិនឃើញ File នៅលើ Server: `{file_path}`")
-      return
-
     order["status"] = "APPROVED"
     PENDING_RECEIPT_USER.pop(order["user_id"], None)
 
-    with open(file_path, "rb") as doc:
-      await context.bot.send_document(
+    if os.path.exists(file_path):
+      with open(file_path, "rb") as doc:
+        await context.bot.send_document(
+            chat_id=order["user_id"],
+            document=doc,
+            caption=(
+                f"🎉 ការទូទាត់សម្រាប់ Order `{order_id}` ត្រូវបាន Approve!\n"
+                f"នេះគឺជា File Script សម្រាប់ **{order['skin_name']}**។"
+            ),
+            parse_mode="Markdown",
+        )
+    else:
+      await context.bot.send_message(
           chat_id=order["user_id"],
-          document=doc,
-          caption=(
+          text=(
               f"🎉 ការទូទាត់សម្រាប់ Order `{order_id}` ត្រូវបាន Approve!\n"
-              f"នេះគឺជា File Script សម្រាប់ **{order['skin_name']}**។"
+              f"Skin: **{order['skin_name']}** (តម្លៃ ${order['price_usd']:.0f})\n"
+              "ℹ️ File Script កំពុងរៀបចំ/ផ្ញើជូនតាមក្រោយ។"
           ),
           parse_mode="Markdown",
       )
 
     await query.edit_message_caption(
-        caption=(query.message.caption or "") + "\n\n✅ APPROVED & SENT"
+        caption=(query.message.caption or "") + "\n\n✅ APPROVED"
     )
 
   elif action == "reject":
@@ -228,6 +276,7 @@ def main():
   app = ApplicationBuilder().token(TOKEN).build()
 
   app.add_handler(CommandHandler("start", start))
+  app.add_handler(CommandHandler("addskin", add_skin))
   app.add_handler(CallbackQueryHandler(on_how_to_buy, pattern=r"^how_to_buy$"))
   app.add_handler(CallbackQueryHandler(on_buy, pattern=r"^buy:"))
   app.add_handler(MessageHandler(filters.PHOTO, on_photo))
